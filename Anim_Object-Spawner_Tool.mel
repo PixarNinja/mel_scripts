@@ -1,0 +1,327 @@
+/*
+Animates spawning and translation of an object based on selection matrix and inputs
+*/
+global string $vertices[];
+global string $obj[];
+global int $axisDiv;
+global string $name;
+global int $nameNum;
+global string $material;
+
+string $menu;
+if(`window -ex $menu`) {
+    deleteUI -window $menu;
+}
+string $menu = `window -t "Animate Object-Spawner Tool" -s 0 -wh 350 460`;
+columnLayout -cat "both" 25 -rs 10 -cw 350;
+text -l "\nThis is the \"Animate Object-Spawner Tool\"! Use this tool to generate a field of any object [input] at the coordinates of reference objects [selection]. A group of references and a control (a dummy for the program to animate) are needed.\n\nTo run:\n1) Select the reference items.\n2) Shift+Select the control.\n3) Input the information in the fields below.\n4) Click \"Animate\"."
+    -w 300 -ww 1 -al "left";
+text -l "Input the number (int) of Subdivisions Axis" -al "left";
+intField  -v 1 axisField;
+text -l "Input the name (string) of the object to duplicate; do not include the trailing number if there is one." -ww 1 -al "left";
+textField -tx "pCube" dupNameField;
+text -l "Input the ending number of the name below. If there is no ending number, input \"0\"." -ww 1 -al "left";
+intField -v 1 nameNumField;
+text -l "Input the name (string) of the material to apply" -al "left";
+textField -tx "myMaterial1" materialField;
+button -l "Animate" -h 35 -c "Animate";
+showWindow $menu;
+//deleteUI -window $menu;
+    
+global proc Animate() { //assuming the control is only 1 object
+    $axisDiv = `intField -q -v axisField`;
+    $name = `textField -q -tx dupNameField`;
+    $nameNum = `intField -q -v nameNumField`;
+    $material = `textField -q -tx materialField`;
+    print ("axis divisions: "); print $axisDiv; print "\n";
+    print ("name: "); print $name; print "\n";
+    print ("name number: "); print $nameNum; print "\n";
+    print ("material: "); print $material; print "\n";
+    string $vertices[] = `ls -sl`;
+    print ("selected items: ");print $vertices;
+    int $count;
+    for($objExist in $vertices) {
+        $count++;
+    }
+    string $obj[]; //obj[0] holds the selected control
+    $obj[0] = $vertices[($count - 1)];
+    string $currVert;
+    int $i;
+    int $j;
+    int $axisInc = 1;
+    int $cubeCount = 1;
+    int $maxCubes = 2500;
+    int $tmp1;
+    int $tmp2;
+    int $numTokens;
+    string $buffer1[];
+    string $buffer2[];
+    string $buffer3[];
+    string $buffer4[];
+    float $getX;
+    float $getY;
+    float $getZ;
+    float $position[3];
+    float $positionInitial[3];
+    int $currTime = 0;
+    int $stepTime = 5; //frames between steps
+    int $endTime = 800; //for short-circuit
+    int $intervalTime = 100;
+    
+    if($currTime < $endTime) { //base case
+        currentTime ($currTime + 1);
+        setKeyframe ($obj[0] + ".tx");
+        setKeyframe ($obj[0] + ".ty");
+        setKeyframe ($obj[0] + ".tz");
+    }
+    if((`match "cv" $vertices[0]` == "cv") || (`match "vtx" $vertices[0]` == "vtx") || (`match "map" $vertices[0]` == "map")) { //check for vertexes, CVs, or UVs
+        $currVert = $vertices[$i];
+        $numTokens = `tokenize $currVert "." $buffer1`;
+        $numTokens += `tokenize $buffer1[1] "[" $buffer2` - 1;
+        $numTokens += `tokenize $buffer2[1] ":" $buffer3` - 1;
+        $numTokens += `tokenize $buffer3[1] "]" $buffer4` - 1;
+        //print $buffer1[0]; print $buffer2[0];
+        $positionInitial = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $buffer3[0] + "]")`;
+        while (($i < ($count - 1)) && ($cubeCount <= $maxCubes)) { //number of references selected... won't work for CV's or vertices... ?
+            $currVert = $vertices[$i];
+            $numTokens = `tokenize $currVert "." $buffer1`;
+            $numTokens += `tokenize $buffer1[1] "[" $buffer2` - 1;
+            $numTokens += `tokenize $buffer2[1] ":" $buffer3` - 1;
+            $numTokens += `tokenize $buffer3[1] "]" $buffer4` - 1;
+            
+            $currTime += $stepTime;
+            if(($currTime >= $endTime) || ($cubeCount > $maxCubes)) { //checks if endTime has been reached or if there are too many cubes
+			    $i = $count;
+        	    continue; //break;
+            }
+            if($buffer3[0] == "") {
+                if($buffer4[0] == "") {
+				    $i = $count;
+				    $currTime = $endTime + 1;
+        			continue; //break;
+                }
+                else { //check for 1-Dimensional reference
+                    $currTime -= $stepTime;
+                    currentTime $currTime;
+                    $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp2 + "]")`;
+                    $getX = $position[0];
+                    $getY = $position[1];
+                    $getZ = $position[2];
+                    move -ws $getX $getY $getZ $obj[0];
+                    setKeyframe ($obj[0] + ".tx");
+                    setKeyframe ($obj[0] + ".ty");
+                    setKeyframe ($obj[0] + ".tz");
+                    dupSpawn($obj, $name, $nameNum, $material, $cubeCount, $positionInitial, $currTime, $stepTime, $intervalTime); //runs for each key set
+                    $cubeCount++;
+                    $currTime += $stepTime;
+                    if(($currTime >= $endTime) || ($cubeCount > $maxCubes)) { //checks if endTime has been reached or if there are too many cubes
+        			    $i = $count;
+        			    continue; //break;
+                    }
+                    $i++;
+                    continue; 
+                }
+            }
+            else if($buffer4[0] == "") { //check for 1-Dimensional reference
+                $currTime -= $stepTime;
+                currentTime $currTime;
+                $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp1 + "]")`;
+                $getX = $position[0];
+                $getY = $position[1];
+                $getZ = $position[2];
+                move -ws $getX $getY $getZ $obj[0];
+                setKeyframe ($obj[0] + ".tx");
+                setKeyframe ($obj[0] + ".ty");
+                setKeyframe ($obj[0] + ".tz");
+                dupSpawn($obj, $name, $nameNum, $material, $cubeCount, $positionInitial, $currTime, $stepTime, $intervalTime); //runs for each key set
+                $cubeCount++;
+                $currTime += $stepTime;
+                if(($currTime >= $endTime) || ($cubeCount > $maxCubes)) { //checks if endTime has been reached or if there are too many cubes
+    			    $i = $count;
+        	        continue; //break;
+                }
+                $i++;
+                continue;
+            }
+            $tmp1 = (int)$buffer3[0];
+            $tmp2 = (int)$buffer4[0];
+            while($tmp1 < $tmp2) {
+                $currTime += $stepTime;
+                $axisInc = 1;
+                while($axisInc <= $axisDiv) { //increments time after each ring of references
+                    currentTime $currTime;
+                    $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp1 + "]")`;
+                    $getX = $position[0];
+                    $getY = $position[1];
+                    $getZ = $position[2];
+                    move -ws $getX $getY $getZ $obj[0];
+                    setKeyframe ($obj[0] + ".tx");
+                    setKeyframe ($obj[0] + ".ty");
+                    setKeyframe ($obj[0] + ".tz");
+                    dupSpawn($obj, $name, $nameNum, $material, $cubeCount, $positionInitial, $currTime, $stepTime, $intervalTime); //runs for each key set
+                    $cubeCount++;
+                    if(($currTime >= $endTime) || ($cubeCount > $maxCubes)) { //checks if endTime has been reached or if there are too many cubes
+        			    $i = $count;
+        			    $tmp1 = $tmp2 + 1;
+        			    $axisInc = $axisDiv + 1;
+            	        continue; //break;
+                    }
+                    $tmp1++;
+                    $axisInc++;
+                    $i++;
+                }
+            }
+            if($tmp1 == $tmp2) {
+                currentTime $currTime;
+                $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp1 + "]")`;
+                $getX = $position[0];
+                $getY = $position[1];
+                $getZ = $position[2];
+                move -ws $getX $getY $getZ $obj[0];
+                setKeyframe ($obj[0] + ".tx");
+                setKeyframe ($obj[0] + ".ty");
+                setKeyframe ($obj[0] + ".tz");
+                dupSpawn($obj, $name, $nameNum, $material, $cubeCount, $positionInitial, $currTime, $stepTime, $intervalTime); //runs for each key set
+                $cubeCount++;
+                $i++;
+            }
+        }
+    }
+    else {
+        print "Reference Object ERROR: There's nothing for me to spawn on!\n";
+    }
+}
+
+global proc dupSpawn(string $cntrl[], string $name, int $nameNum, string $material, int $j, float $positionInitial[], int $currTime, int $stepTime, int $intervalTime) {
+    int $buf = 20; //the speed multiplier for transformations (limit to zero)
+    int $transScale = 1;
+    int $scaleScale = rand(1) + 1;
+    int $transX;
+    int $transY;
+    int $transZ;
+    int $grpX;
+    int $grpY;
+    int $grpZ;
+    $grpX = getAttr ($cntrl[0] + ".tx");
+    $grpY = getAttr ($cntrl[0] + ".ty");
+    $grpZ = getAttr ($cntrl[0] + ".tz");
+    //polyCube -w 0.01 -h 0.01 -d 0.01 -sx 1 -sy 1 -sz 1 -cuv 4 -ch 1;
+    select -r ($name + $nameNum);
+    duplicate -rr;
+    $j++;
+    defaultNavigation -source $material -destination ("|" + $name + $j + "|" + $name + "Shape" + $j + ".instObjGroups[0]") -connectToExisting;
+    /* initialize translation */
+    currentTime 1;
+    move $positionInitial[0] $positionInitial[1] $positionInitial[2];
+    scale -r 0.001 0.001 0.001;
+    setKeyframe ($name + $j + ".rx");
+    setKeyframe ($name + $j + ".ry");
+    setKeyframe ($name + $j + ".rz");
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+    /* set translation */
+    currentTime ($currTime - $stepTime);
+    move $grpX $grpY $grpZ;
+    setKeyframe ($name + $j + ".rx");
+    setKeyframe ($name + $j + ".ry");
+    setKeyframe ($name + $j + ".rz");
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+    /* first transformation */
+    currentTime $currTime;
+    scale -r 1000 1000 1000;
+    setKeyframe ($name + $j + ".rx");
+    setKeyframe ($name + $j + ".ry");
+    setKeyframe ($name + $j + ".rz");
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+    /* second transformation */
+    currentTime (0.5 * $buf + $currTime);
+    $transX = rand($transScale);
+    $transY = rand($transScale);
+    $transZ = rand($transScale);
+    move -r $transX $transX $transX;
+    scale -r $scaleScale $scaleScale $scaleScale;
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+    /* third transformation */
+    currentTime ($buf + $currTime);
+    rotate -r -os -fo (180 * rand(1)) (180 * rand(1)) (180 * rand(1));
+    scale -r 0.9 0.9 0.9;
+    $transX = -$transX;
+    $transY = -$transY;
+    $transZ = -$transZ;
+    move -r $transX $transY $transZ;
+    setKeyframe ($name + $j + ".rx");
+    setKeyframe ($name + $j + ".ry");
+    setKeyframe ($name + $j + ".rz");
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+    /* fourth transformation */
+    currentTime ($currTime + $intervalTime);
+    setKeyframe ($name + $j + ".rx");
+    setKeyframe ($name + $j + ".ry");
+    setKeyframe ($name + $j + ".rz");
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+    /* fifth transformation */
+    currentTime (0.5 * $buf + $currTime + $intervalTime);
+    scale -r (2 * $scaleScale) (2 * $scaleScale) (2 * $scaleScale);
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    /* sixth transformation */
+    currentTime ($buf + $currTime + $intervalTime);
+    rotate -r -os -fo (-180 * rand(1)) (-180 * rand(1)) (-180 * rand(1));
+    scale -r 0.0001 0.0001 0.0001;
+    $transX = -$transX - 10;
+    $transY = -$transY - 10;
+    $transZ = -$transZ - 10;
+    move -r $transX $transY $transZ;
+    setKeyframe ($name + $j + ".rx");
+    setKeyframe ($name + $j + ".ry");
+    setKeyframe ($name + $j + ".rz");
+    setKeyframe ($name + $j + ".sx");
+    setKeyframe ($name + $j + ".sy");
+    setKeyframe ($name + $j + ".sz");
+    setKeyframe ($name + $j + ".tx");
+    setKeyframe ($name + $j + ".ty");
+    setKeyframe ($name + $j + ".tz");
+}
+
+/* Legacy Code:
+global proc cubeSwarm(string $cntrl[], float positionZERO[]) {
+    int $cubeCount = 1;
+    int $currTime = 1; //local
+    int $endTime = 100; //local
+    int $stepTime = 2; //the gaps between spawns
+    while($currTime < $endTime) { //creates and animates cubes by offset of $buf until currTime == $endTime
+        cubeSpawn($cntrl, $currTime, $stepTime, $cubeCount, $positionInitial);
+        $cubeCount++;
+        $currTime += $stepTime;
+    }
+}*/

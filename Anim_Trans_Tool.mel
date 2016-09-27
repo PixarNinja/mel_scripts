@@ -1,0 +1,165 @@
+/*
+Animates translation of an object based on selection matrix
+*/
+global string $vertices[];
+global string $obj[];
+string $menu = `window -t "Animate Translation Tool" -s 0
+    -wh 300 480`;
+columnLayout -cat "both" 25 -rs 10 -cw 300;
+text -l "\nThis is the Animate Translation Tool! Use this tool to animate the movement of any object [selection] to the coordinates of a group of reference objects [selection] given intervals of time [inputs]. A group of references and the object to animate are needed.\n\nTo run:\n1) Select the reference object(s) that will be used as a path for the control object.\n2) Shift+Select the control object to be translated.\n3) Press the \"Animate\" button."
+    -w 250 -ww 1 -al "left";
+text -l "Input the Interval Time (the time at which to start the path animation, the control object will be initialized at time 1 and the below input time)." -ww 1 -al "left";
+intField -v 10 initTimeField;
+text -l "Input the Step Time (the time interval for each node on the path)." -ww 1 -al "left";
+intField -v 3 stepTimeField;
+text -l "Input the End Time (the time at which to stop animation whether or not the program is path is completed)." -ww 1 -al "left";
+intField -v 800 endTimeField;
+button -l "Animate" -h 35 -c "animateTranslation";
+showWindow $menu;
+
+global proc animateTranslation() { //assuming the control is only 1 object
+    string $obj[];
+    string $vertices[] = `ls -sl`;
+    print ("selected items: \n");print $vertices;
+    int $count;
+    string $objExist;
+    for($objExist in $vertices) {
+        $count++;
+    }
+    $obj[0] = $vertices[($count - 1)];
+
+    int $i;
+    int $j;
+    int $tmp1;
+    int $tmp2;
+    int $numTokens;
+    string $buffer1[];
+    string $buffer2[];
+    string $buffer3[];
+    string $buffer4[];
+    float $getX;
+    float $getY;
+    float $getZ;
+    float $position[3];
+    float $positionInitial[3];
+    int $currTime = 0;
+    int $initTime = `intField -q -v initTimeField`;
+    int $stepTime = `intField -q -v stepTimeField`;
+    int $endTime = `intField -q -v endTimeField`;
+    
+    if((`match "cv" $vertices[0]` == "cv") || (`match "vtx" $vertices[0]` == "vtx") || (`match "map" $vertices[0]` == "map")) { //check for vertexes, CVs, or UVs
+        if($currTime < $endTime) { //base case
+            $numTokens = `tokenize $vertices[$i] "." $buffer1`;
+            $numTokens += `tokenize $buffer1[1] "[" $buffer2` - 1;
+            $numTokens += `tokenize $buffer2[1] ":" $buffer3` - 1;
+            $numTokens += `tokenize $buffer3[1] "]" $buffer4` - 1;
+            $positionInitial = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $buffer3[0] + "]")`;
+            move -ws $positionInitial[0] $positionInitial[1] $positionInitial[2] $obj[0];
+            currentTime ($currTime + 1);
+            setKeyframe ($obj[0] + ".tx");
+            setKeyframe ($obj[0] + ".ty");
+            setKeyframe ($obj[0] + ".tz");
+            $currTime += $initTime;
+            $currTime -= $stepTime;
+            if($currTime <= 0) {
+                $currTime = 1;
+            }
+        }
+        while ($i < ($count - 1)) { //won't break on its own, relies on base cases below
+            $numTokens = `tokenize $vertices[$i] "." $buffer1`;
+            $numTokens += `tokenize $buffer1[1] "[" $buffer2` - 1;
+            $numTokens += `tokenize $buffer2[1] ":" $buffer3` - 1;
+            $numTokens += `tokenize $buffer3[1] "]" $buffer4` - 1;
+            $currTime += $stepTime;
+            if($currTime >= $endTime) { //checks if endTime has been reached
+			    $i = $count;
+			    continue; //break;
+            }
+            if($buffer3[0] == "") {
+                if($buffer4[0] == "") {
+				    $i = $count;
+				    continue; //break;
+                }
+                else { //check for 1-Dimensional reference
+                    $currTime -= $stepTime;
+                    currentTime $currTime;
+                    $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp2 + "]")`;
+                    move -ws $position[0] $position[1] $position[2] $obj[0];
+                    setKeyframe ($obj[0] + ".tx");
+                    setKeyframe ($obj[0] + ".ty");
+                    setKeyframe ($obj[0] + ".tz");
+                    $currTime += $stepTime;
+                    if($currTime >= $endTime) { //checks if endTime has been reached
+        			    $i = $count;
+        			    continue; //break;
+                    }
+                    $i++;
+                    continue; 
+                }
+            }
+            else if($buffer4[0] == "") { //check for 1-Dimensional reference
+                $currTime -= $stepTime;
+                currentTime $currTime;
+                $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp1 + "]")`;
+                move -ws $position[0] $position[1] $position[2] $obj[0];
+                setKeyframe ($obj[0] + ".tx");
+                setKeyframe ($obj[0] + ".ty");
+                setKeyframe ($obj[0] + ".tz");
+                $currTime += $stepTime;
+                if($currTime >= $endTime) { //checks if endTime has been reached
+    			    $i = $count;
+    			    continue; //break;
+                }
+                $i++;
+                continue;
+            }
+            $tmp1 = (int)$buffer3[0];
+            $tmp2 = (int)$buffer4[0];
+            while($tmp1 <= $tmp2) {
+                currentTime $currTime;
+                $position = `xform -ws -query -t ($buffer1[0] + "." + $buffer2[0] + "[" + $tmp1 + "]")`;
+                move -ws $position[0] $position[1] $position[2] $obj[0];
+                setKeyframe ($obj[0] + ".tx");
+                setKeyframe ($obj[0] + ".ty");
+                setKeyframe ($obj[0] + ".tz");
+                $currTime += $stepTime;
+                if($currTime >= $endTime) { //checks if endTime has been reached
+    			    $i = $count;
+    			    $currTime = $endTime + 1;
+    			    continue; //break;
+                }
+                $tmp1++;
+            }
+            $i++;
+        }
+    }
+    else {
+        if($currTime < $endTime) { //base case
+            $positionInitial = `xform -ws -query -t ($vertices[$i])`;
+            move -ws $positionInitial[0] $positionInitial[1] $positionInitial[2] $obj[0];
+            currentTime ($currTime + 1);
+            setKeyframe ($obj[0] + ".tx");
+            setKeyframe ($obj[0] + ".ty");
+            setKeyframe ($obj[0] + ".tz");
+            $currTime += $initTime;
+            $currTime -= $stepTime;
+            if($currTime <= 0) {
+                $currTime = 1;
+            }
+        }
+        while($i < ($count - 1)) {
+            $currTime += $stepTime;
+            if($currTime >= $endTime) { //checks if endTime has been reached
+                $i = $count;
+                continue; //break;
+            }
+            currentTime $currTime;
+            $position = `xform -ws -query -t $vertices[$i]`;
+            move -ws $position[0] $position[1] $position[2] $obj[0];
+            setKeyframe ($obj[0] + ".tx");
+            setKeyframe ($obj[0] + ".ty");
+            setKeyframe ($obj[0] + ".tz");
+            $i++;
+        }
+    }
+}
